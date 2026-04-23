@@ -140,9 +140,14 @@ resource "aws_security_group" "gpu_sg" {
 }
 
 # 4. Key Pair & Bastion
+resource "tls_private_key" "lab_key" {
+  algorithm = "RSA"
+  rsa_bits  = 2048
+}
+
 resource "aws_key_pair" "lab_key" {
   key_name   = "ai-lab-key-${random_id.id.hex}"
-  public_key = file("${path.module}/lab-key.pub")
+  public_key = tls_private_key.lab_key.public_key_openssh
 }
 
 resource "random_id" "id" {
@@ -173,12 +178,16 @@ resource "aws_instance" "bastion" {
 }
 
 # 5. GPU Instance
-data "aws_ami" "deep_learning" {
+data "aws_ami" "amazon_linux_2023" {
   most_recent = true
   owners      = ["amazon"]
   filter {
     name   = "name"
-    values = ["Deep Learning Base OSS Nvidia Driver GPU AMI (Ubuntu 22.04)*"]
+    values = ["al2023-ami-*-x86_64"]
+  }
+  filter {
+    name   = "state"
+    values = ["available"]
   }
 }
 
@@ -205,15 +214,15 @@ resource "aws_iam_instance_profile" "ai_profile" {
 }
 
 resource "aws_instance" "gpu_node" {
-  ami                    = data.aws_ami.deep_learning.id
-  instance_type          = "g4dn.xlarge" 
+  ami                    = data.aws_ami.amazon_linux_2023.id
+  instance_type          = "t3.micro" 
   subnet_id              = aws_subnet.private[0].id
   vpc_security_group_ids = [aws_security_group.gpu_sg.id]
   key_name               = aws_key_pair.lab_key.key_name
   iam_instance_profile   = aws_iam_instance_profile.ai_profile.name
 
   root_block_device {
-    volume_size = 150 
+    volume_size = 30 
     volume_type = "gp3"
   }
 
